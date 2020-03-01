@@ -23,12 +23,15 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.VpnService;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.util.Pair;
 import android.widget.Toast;
+
+import androidx.core.app.NotificationCompat;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -40,8 +43,8 @@ public class WslVpnService extends VpnService implements Handler.Callback {
 
     private static final String TAG = WslVpnService.class.getSimpleName();
 
-    public static final String ACTION_CONNECT = "com.example.android.toyvpn.START";
-    public static final String ACTION_DISCONNECT = "com.example.android.toyvpn.STOP";
+    public static final String ACTION_CONNECT = "com.rex.proxy.wsl.START";
+    public static final String ACTION_DISCONNECT = "com.rex.proxy.wsl.STOP";
 
     private Handler mHandler;
 
@@ -103,17 +106,11 @@ public class WslVpnService extends VpnService implements Handler.Callback {
 
         // Extract information from the shared preferences.
         final SharedPreferences prefs = getSharedPreferences(WslVpnClient.Prefs.NAME, MODE_PRIVATE);
-        final String server = prefs.getString(WslVpnClient.Prefs.SERVER_ADDRESS, "");
-        final byte[] secret = prefs.getString(WslVpnClient.Prefs.SHARED_SECRET, "").getBytes();
-        final boolean allow = prefs.getBoolean(WslVpnClient.Prefs.ALLOW, true);
-        final Set<String> packages =
-                prefs.getStringSet(WslVpnClient.Prefs.PACKAGES, Collections.emptySet());
-        final int port = prefs.getInt(WslVpnClient.Prefs.SERVER_PORT, 0);
-        final String proxyHost = prefs.getString(WslVpnClient.Prefs.PROXY_HOSTNAME, "");
-        final int proxyPort = prefs.getInt(WslVpnClient.Prefs.PROXY_PORT, 0);
-        startConnection(new WslVpnConnection(
-                this, mNextConnectionId.getAndIncrement(), server, port, secret,
-                proxyHost, proxyPort, allow, packages));
+        final String socks_address = prefs.getString(WslVpnClient.Prefs.SOCKS_ADDRESS, "");
+        final int socks_port = prefs.getInt(WslVpnClient.Prefs.SOCKS_PORT, 1080);
+        final String socks_user = prefs.getString(WslVpnClient.Prefs.SOCKS_USER, "");
+        final byte[] socks_password = prefs.getString(WslVpnClient.Prefs.SOCKS_PASSWORD, "").getBytes();
+        startConnection(new WslVpnConnection(this, mNextConnectionId.getAndIncrement(), socks_address, socks_port, socks_user, socks_password));
     }
 
     private void startConnection(final WslVpnConnection connection) {
@@ -159,16 +156,25 @@ public class WslVpnService extends VpnService implements Handler.Callback {
     }
 
     private void updateForegroundNotification(final int message) {
-        final String NOTIFICATION_CHANNEL_ID = "ToyVpn";
-        NotificationManager mNotificationManager = (NotificationManager) getSystemService(
-                NOTIFICATION_SERVICE);
-        mNotificationManager.createNotificationChannel(new NotificationChannel(
-                NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_ID,
-                NotificationManager.IMPORTANCE_DEFAULT));
-        startForeground(1, new Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        final String NOTIFY_CHANNEL_ID = "WslVpn";
+        final int NOTIFY_ID = 100;
+
+        NotificationManager mNotifyMgr = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(NOTIFY_CHANNEL_ID,
+                    "General notifications",
+                    NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("General notification category");
+            mNotifyMgr.createNotificationChannel(channel);
+        }
+
+        Notification notify = new NotificationCompat.Builder(this, NOTIFY_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_vpn)
                 .setContentText(getString(message))
                 .setContentIntent(mConfigureIntent)
-                .build());
+                .build();
+
+        startForeground(NOTIFY_ID, notify);
     }
 }

@@ -21,18 +21,18 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="3mm">
+        android:padding="18dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:singleLine="true"
-            android:text="@string/address"
+            android:text="@string/socks_address"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
         <EditText
-            android:id="@+id/address"
-
+            android:id="@+id/socks_address"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:singleLine="true"
@@ -41,12 +41,13 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:singleLine="true"
-            android:text="@string/port"
+            android:text="@string/socks_port"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
         <EditText
-            android:id="@+id/port"
+            android:id="@+id/socks_port"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="number"
@@ -56,95 +57,59 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:singleLine="true"
-            android:text="@string/secret"
+            android:text="@string/socks_password"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
         <EditText
-            android:id="@+id/secret"
+            android:id="@+id/socks_password"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:password="true"
+            android:inputType="textPassword"
             android:singleLine="true"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:singleLine="true"
-            android:text="@string/proxyhost"
+            android:text="@string/socks_user"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
         <EditText
-            android:id="@+id/proxyhost"
+            android:id="@+id/socks_user"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:singleLine="true"
             android:textAppearance="?android:attr/textAppearanceMedium" />
 
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:text="@string/proxyport"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
 
-        <EditText
-            android:id="@+id/proxyport"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:singleLine="true"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:text="@string/packages"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
-
-        <RadioGroup
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:singleLine="true"
-            android:textAppearance="?android:attr/textAppearanceMedium">
-
-            <RadioButton
-                android:id="@+id/allowed"
-                android:layout_width="wrap_content"
+            <Button
+                android:id="@+id/connect"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/allowed" />
+                android:layout_weight="1.0"
+                android:singleLine="true"
+                android:text="@string/connect"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
 
-            <RadioButton
-                android:layout_width="wrap_content"
+            <Button
+                android:id="@+id/disconnect"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="@string/disallowed" />
-        </RadioGroup>
+                android:layout_weight="1.0"
+                android:singleLine="true"
+                android:text="@string/disconnect"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+        </LinearLayout>
 
-        <EditText
-            android:id="@+id/packages"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
-
-        <Button
-            android:id="@+id/connect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:text="@string/connect"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
-
-        <Button
-            android:id="@+id/disconnect"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:text="@string/disconnect"
-            android:textAppearance="?android:attr/textAppearanceMedium" />
 
     </LinearLayout>
 </ScrollView>

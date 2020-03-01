@@ -17,11 +17,8 @@
 package com.rex.proxy.wsl;
 
 import android.app.PendingIntent;
-import android.content.pm.PackageManager;
-import android.net.ProxyInfo;
 import android.net.VpnService;
 import android.os.ParcelFileDescriptor;
-import android.text.TextUtils;
 import android.util.Log;
 
 import java.io.FileInputStream;
@@ -32,10 +29,8 @@ import java.net.SocketAddress;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.channels.DatagramChannel;
-import java.util.Set;
+import java.nio.charset.Charset;
 import java.util.concurrent.TimeUnit;
-
-import static java.nio.charset.StandardCharsets.US_ASCII;
 
 public class WslVpnConnection implements Runnable {
     /**
@@ -80,41 +75,23 @@ public class WslVpnConnection implements Runnable {
     private final VpnService mService;
     private final int mConnectionId;
 
-    private final String mServerName;
-    private final int mServerPort;
-    private final byte[] mSharedSecret;
+    private final String mSocksAddress;
+    private final int mSocksPort;
+    private final String mSocksUser;
+    private final byte[] mSocksPassword;
 
     private PendingIntent mConfigureIntent;
     private OnEstablishListener mOnEstablishListener;
 
-    // Proxy settings
-    private String mProxyHostName;
-    private int mProxyHostPort;
-
-    // Allowed/Disallowed packages for VPN usage
-    private final boolean mAllow;
-    private final Set<String> mPackages;
-
     public WslVpnConnection(final VpnService service, final int connectionId,
-                            final String serverName, final int serverPort, final byte[] sharedSecret,
-                            final String proxyHostName, final int proxyHostPort, boolean allow,
-                            final Set<String> packages) {
+                            final String socksAddress, final int socksPort, final String socksUser, final byte[] socksPassword) {
         mService = service;
         mConnectionId = connectionId;
 
-        mServerName = serverName;
-        mServerPort= serverPort;
-        mSharedSecret = sharedSecret;
-
-        if (!TextUtils.isEmpty(proxyHostName)) {
-            mProxyHostName = proxyHostName;
-        }
-        if (proxyHostPort > 0) {
-            // The port value is always an integer due to the configured inputType.
-            mProxyHostPort = proxyHostPort;
-        }
-        mAllow = allow;
-        mPackages = packages;
+        mSocksAddress = socksAddress;
+        mSocksPort= socksPort;
+        mSocksUser = socksUser;
+        mSocksPassword = socksPassword;
     }
 
     /**
@@ -137,7 +114,7 @@ public class WslVpnConnection implements Runnable {
             // This greatly reduces the complexity of seamless handover, which
             // tries to recreate the tunnel without shutting down everything.
             // In this demo, all we need to know is the server address.
-            final SocketAddress serverAddress = new InetSocketAddress(mServerName, mServerPort);
+            final SocketAddress serverAddress = new InetSocketAddress(mSocksAddress, mSocksPort);
 
             // We try to create the tunnel several times.
             // TODO: The better way is to work with ConnectivityManager, trying only when the
@@ -279,7 +256,7 @@ public class WslVpnConnection implements Runnable {
         ByteBuffer packet = ByteBuffer.allocate(1024);
 
         // Control messages always start with zero.
-        packet.put((byte) 0).put(mSharedSecret).flip();
+        packet.put((byte) 0).put(mSocksPassword).flip();
 
         // Send the secret several times in case of packet loss.
         for (int i = 0; i < 3; ++i) {
@@ -296,7 +273,7 @@ public class WslVpnConnection implements Runnable {
             // byte is 0 as expected.
             int length = tunnel.read(packet);
             if (length > 0 && packet.get(0) == 0) {
-                return configure(new String(packet.array(), 1, length - 1, US_ASCII).trim());
+                return configure(new String(packet.array(), 1, length - 1, Charset.forName("US-ASCII")).trim());
             }
         }
         throw new IOException("Timed out");
@@ -309,21 +286,21 @@ public class WslVpnConnection implements Runnable {
             String[] fields = parameter.split(",");
             try {
                 switch (fields[0].charAt(0)) {
-                    case 'm':
-                        builder.setMtu(Short.parseShort(fields[1]));
-                        break;
-                    case 'a':
-                        builder.addAddress(fields[1], Integer.parseInt(fields[2]));
-                        break;
-                    case 'r':
-                        builder.addRoute(fields[1], Integer.parseInt(fields[2]));
-                        break;
-                    case 'd':
-                        builder.addDnsServer(fields[1]);
-                        break;
-                    case 's':
-                        builder.addSearchDomain(fields[1]);
-                        break;
+                case 'm':
+                    builder.setMtu(Short.parseShort(fields[1]));
+                    break;
+                case 'a':
+                    builder.addAddress(fields[1], Integer.parseInt(fields[2]));
+                    break;
+                case 'r':
+                    builder.addRoute(fields[1], Integer.parseInt(fields[2]));
+                    break;
+                case 'd':
+                    builder.addDnsServer(fields[1]);
+                    break;
+                case 's':
+                    builder.addSearchDomain(fields[1]);
+                    break;
                 }
             } catch (NumberFormatException e) {
                 throw new IllegalArgumentException("Bad parameter: " + parameter);
@@ -332,21 +309,9 @@ public class WslVpnConnection implements Runnable {
 
         // Create a new interface using the builder and save the parameters.
         final ParcelFileDescriptor vpnInterface;
-        for (String packageName : mPackages) {
-            try {
-                if (mAllow) {
-                    builder.addAllowedApplication(packageName);
-                } else {
-                    builder.addDisallowedApplication(packageName);
-                }
-            } catch (PackageManager.NameNotFoundException e){
-                Log.w(getTag(), "Package not available: " + packageName, e);
-            }
-        }
-        builder.setSession(mServerName).setConfigureIntent(mConfigureIntent);
-        if (!TextUtils.isEmpty(mProxyHostName)) {
-            builder.setHttpProxy(ProxyInfo.buildDirectProxy(mProxyHostName, mProxyHostPort));
-        }
+
+        builder.setSession(mSocksAddress);
+        builder.setConfigureIntent(mConfigureIntent);
         synchronized (mService) {
             vpnInterface = builder.establish();
             if (mOnEstablishListener != null) {
