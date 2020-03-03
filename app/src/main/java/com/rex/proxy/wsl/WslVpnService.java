@@ -24,85 +24,57 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.VpnService;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Message;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
-import android.util.Pair;
-import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 
-import java.io.IOException;
-import java.util.Collections;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import tun2socks.Tun2socks;
 
-public class WslVpnService extends VpnService implements Handler.Callback {
+public class WslVpnService extends VpnService {
 
     private static final String TAG = WslVpnService.class.getSimpleName();
 
+    private static final int VPN_MTU = 1500;
+
     public static final String ACTION_CONNECT = "com.rex.proxy.wsl.START";
     public static final String ACTION_DISCONNECT = "com.rex.proxy.wsl.STOP";
-
-    private Handler mHandler;
-
-    private static class Connection extends Pair<Thread, ParcelFileDescriptor> {
-        public Connection(Thread thread, ParcelFileDescriptor pfd) {
-            super(thread, pfd);
-        }
-    }
-
-    private final AtomicReference<Thread> mConnectingThread = new AtomicReference<>();
-    private final AtomicReference<Connection> mConnection = new AtomicReference<>();
-
-    private AtomicInteger mNextConnectionId = new AtomicInteger(1);
 
     private PendingIntent mConfigureIntent;
 
     @Override
     public void onCreate() {
-        // The handler is only used to show messages.
-        if (mHandler == null) {
-            mHandler = new Handler(this);
-        }
-
-        // Create the intent to "configure" the connection (just start WslVpnClient).
-        mConfigureIntent = PendingIntent.getActivity(this, 0, new Intent(this, WslVpnClient.class),
+        super.onCreate(); // Empty
+        mConfigureIntent = PendingIntent.getActivity(this, 0,
+                new Intent(this, WslVpnClient.class),
                 PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
-            disconnect();
+            stop();
             return START_NOT_STICKY;
         } else {
-            connect();
+            start();
             return START_STICKY;
         }
     }
 
     @Override
     public void onDestroy() {
-        disconnect();
+        super.onDestroy(); // Empty
+        stop();
     }
 
     @Override
-    public boolean handleMessage(Message message) {
-        Toast.makeText(this, message.what, Toast.LENGTH_SHORT).show();
-        if (message.what != R.string.disconnected) {
-            updateForegroundNotification(message.what);
-        }
-        return true;
+    public void onRevoke() {
+        super.onRevoke(); // Default stopSelf()
+        stop();
     }
 
-    private void connect() {
-        // Become a foreground service. Background services can be VPN services too, but they can
-        // be killed by background check before getting a chance to receive onRevoke().
-        updateForegroundNotification(R.string.connecting);
-        mHandler.sendEmptyMessage(R.string.connecting);
+    private void start() {
+        startForeground();
 
         // Extract information from the shared preferences.
         final SharedPreferences prefs = getSharedPreferences(WslVpnClient.Prefs.NAME, MODE_PRIVATE);
@@ -110,68 +82,80 @@ public class WslVpnService extends VpnService implements Handler.Callback {
         final int socks_port = prefs.getInt(WslVpnClient.Prefs.SOCKS_PORT, 1080);
         final String socks_user = prefs.getString(WslVpnClient.Prefs.SOCKS_USER, "");
         final byte[] socks_password = prefs.getString(WslVpnClient.Prefs.SOCKS_PASSWORD, "").getBytes();
-        startConnection(new WslVpnConnection(this, mNextConnectionId.getAndIncrement(), socks_address, socks_port, socks_user, socks_password));
-    }
 
-    private void startConnection(final WslVpnConnection connection) {
-        // Replace any existing connecting thread with the  new one.
-        final Thread thread = new Thread(connection, "ToyVpnThread");
-        setConnectingThread(thread);
+        // FIXME: Protect the tunnel before connecting to avoid loopback.
+        //if (!protect(tunnel.socket())) {
+        //    throw new IllegalStateException("Cannot protect the tunnel");
+        //}
 
-        // Handler to mark as connected once onEstablish is called.
-        connection.setConfigureIntent(mConfigureIntent);
-        connection.setOnEstablishListener(tunInterface -> {
-            mHandler.sendEmptyMessage(R.string.connected);
+        // LinkLocal address 169.254.1.0 - 169.254.254.255
+        // Tethering address 192.168.43.0/24
+        VpnService.Builder builder = new VpnService.Builder();
+        builder.setSession(getString(R.string.app_name));
+        builder.setConfigureIntent(mConfigureIntent);
+        builder.setMtu(VPN_MTU);
 
-            mConnectingThread.compareAndSet(thread, null);
-            setConnection(new Connection(thread, tunInterface));
-        });
-        thread.start();
-    }
+        builder.addAddress("192.168.43.1", 24);
+        builder.addRoute("0.0.0.0", 0);
+        builder.addDnsServer("8.8.8.8");
+        builder.addDnsServer("8.8.4.4");
 
-    private void setConnectingThread(final Thread thread) {
-        final Thread oldThread = mConnectingThread.getAndSet(thread);
-        if (oldThread != null) {
-            oldThread.interrupt();
+        // Convert 192.168.43.1 to IPv6 format by https://dnschecker.org/ipv4-to-ipv6.php
+        //builder.addAddress("::ffff:c0a8:2b01", 120);
+        //builder.addRoute("::", 0);
+        //builder.addDnsServer("2001:4860:4860::8888");
+        //builder.addDnsServer("2001:4860:4860::8844");
+
+        // ifconfig
+        // tun0     Link encap:UNSPEC
+        //          inet addr:192.168.43.1  P-t-P:192.168.43.1  Mask:255.255.255.0
+        //          UP POINTOPOINT RUNNING  MTU:1500  Metric:1
+        //          RX packets:143759 errors:0 dropped:0 overruns:0 frame:0
+        //          TX packets:179022 errors:0 dropped:111128 overruns:0 carrier:0
+        //          collisions:0 txqueuelen:500
+        //          RX bytes:6104584 TX bytes:7874928
+
+        // netstat -nr
+        // Kernel IP routing table
+        // Destination     Gateway         Genmask         Flags   MSS Window  irtt Iface
+        // 192.168.43.0    0.0.0.0         255.255.255.0   U         0 0          0 tun0
+        // 192.168.200.0   0.0.0.0         255.255.255.0   U         0 0          0 radio0
+        // 192.168.232.0   0.0.0.0         255.255.248.0   U         0 0          0 wlan0
+
+        final ParcelFileDescriptor pfd = builder.establish();
+        if (pfd == null) {
+            stopForeground(true);
         }
+        Log.i(TAG, "New interface: " + pfd);
+
+        Tun2socks.setLoglevel("debug");
+        Tun2socks.start(pfd.detachFd(), socks_address + ":" + socks_port, "255.0.128.1", "255.0.143.254", VPN_MTU);
+        //Tun2socks.start(pfd.detachFd(), socks_address + ":" + socks_port, "169.254.1.1", "169.254.1.254", VPN_MTU);
+        Log.i(TAG, "New interface: " + pfd);
     }
 
-    private void setConnection(final Connection connection) {
-        final Connection oldConnection = mConnection.getAndSet(connection);
-        if (oldConnection != null) {
-            try {
-                oldConnection.first.interrupt();
-                oldConnection.second.close();
-            } catch (IOException e) {
-                Log.e(TAG, "Closing VPN interface", e);
-            }
-        }
-    }
-
-    private void disconnect() {
-        mHandler.sendEmptyMessage(R.string.disconnected);
-        setConnectingThread(null);
-        setConnection(null);
+    private void stop() {
+        Tun2socks.stop();
         stopForeground(true);
     }
 
-    private void updateForegroundNotification(final int message) {
+    private void startForeground() {
         final String NOTIFY_CHANNEL_ID = "WslVpn";
         final int NOTIFY_ID = 100;
 
-        NotificationManager mNotifyMgr = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        NotificationManager notifyMgr = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(NOTIFY_CHANNEL_ID,
                     "General notifications",
                     NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("General notification category");
-            mNotifyMgr.createNotificationChannel(channel);
+            notifyMgr.createNotificationChannel(channel);
         }
 
         Notification notify = new NotificationCompat.Builder(this, NOTIFY_CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_vpn)
-                .setContentText(getString(message))
+                .setContentText(getString(R.string.connected))
                 .setContentIntent(mConfigureIntent)
                 .build();
 

@@ -49,7 +49,7 @@ public class WslVpnClient extends Activity {
         final TextView textSocksPassword = findViewById(R.id.socks_password);
 
         textSocksAddress.setText(prefs.getString(Prefs.SOCKS_ADDRESS, ""));
-        textSocksPort.setText(prefs.getInt(Prefs.SOCKS_PORT, 1080));
+        textSocksPort.setText(String.valueOf(prefs.getInt(Prefs.SOCKS_PORT, 1080)));
         textSocksUser.setText(prefs.getString(Prefs.SOCKS_USER, ""));
         textSocksPassword.setText(prefs.getString(Prefs.SOCKS_PASSWORD, ""));
 
