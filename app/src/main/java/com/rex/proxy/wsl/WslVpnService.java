@@ -58,7 +58,7 @@ public class WslVpnService extends VpnService {
         super.onCreate(); // Empty
         Log.d(TAG, "onCreate");
         mConfigureIntent = PendingIntent.getActivity(this, 0,
-                new Intent(this, WslVpnClient.class),
+                new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
@@ -92,11 +92,11 @@ public class WslVpnService extends VpnService {
         Log.i(TAG, "Start VPN");
 
         // Extract information from the shared preferences.
-        final SharedPreferences prefs = getSharedPreferences(WslVpnClient.Prefs.NAME, MODE_PRIVATE);
-        final String socks_address = prefs.getString(WslVpnClient.Prefs.SOCKS_ADDRESS, "");
-        final int socks_port = prefs.getInt(WslVpnClient.Prefs.SOCKS_PORT, 1080);
-        final String socks_user = prefs.getString(WslVpnClient.Prefs.SOCKS_USER, "");
-        final byte[] socks_password = prefs.getString(WslVpnClient.Prefs.SOCKS_PASSWORD, "").getBytes();
+        final SharedPreferences prefs = getSharedPreferences(WslPrefs.NAME, MODE_PRIVATE);
+        final String socks_address = prefs.getString(WslPrefs.SOCKS_ADDRESS, "");
+        final int socks_port = prefs.getInt(WslPrefs.SOCKS_PORT, 1080);
+        final String socks_user = prefs.getString(WslPrefs.SOCKS_USER, "");
+        final byte[] socks_password = prefs.getString(WslPrefs.SOCKS_PASSWORD, "").getBytes();
 
         // FIXME: Protect the tunnel before connecting to avoid loopback.
         //if (!protect(tunnel.socket())) {
