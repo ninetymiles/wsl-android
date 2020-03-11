@@ -89,7 +89,6 @@ public class WslVpnService extends VpnService {
 
     private void start() {
         Log.i(TAG, "Start VPN");
-        startForeground();
 
         // Extract information from the shared preferences.
         final SharedPreferences prefs = getSharedPreferences(WslVpnClient.Prefs.NAME, MODE_PRIVATE);
@@ -139,8 +138,10 @@ public class WslVpnService extends VpnService {
 
         final ParcelFileDescriptor pfd = builder.establish();
         if (pfd == null) {
-            stopForeground(true);
+            Log.w(TAG, "Failed to establish VPN");
+            return;
         }
+        startForeground();
         Log.i(TAG, "Start interface: " + pfd);
         mTunFileDescriptor = pfd.getFileDescriptor();
 
