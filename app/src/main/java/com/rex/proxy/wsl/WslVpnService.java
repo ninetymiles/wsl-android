@@ -35,6 +35,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 
 import tun2socks.PacketFlow;
 import tun2socks.Tun2socks;
@@ -213,15 +214,16 @@ public class WslVpnService extends VpnService {
         public void run() {
             Log.i(TAG, "TunReader+");
             try {
+                // Larger then MTU should be enough
+                ByteBuffer buffer = ByteBuffer.allocate(2048);
                 while (!isInterrupted()) {
-                    byte[] data = new byte[mInput.available()];
-                    int size = mInput.read(data);
+                    int size = mInput.read(buffer.array());
                     Log.v(TAG, "Input size=" + size);
-                    if (size != data.length) {
-                        Log.w(TAG, "Input size=" + size + " expected=" + data.length);
+                    if (size < 0) { // EOS
+                        Log.d(TAG, "Input EOS");
                         break;
                     }
-                    Tun2socks.inputPacket(data);
+                    Tun2socks.inputPacket(ByteBuffer.wrap(buffer.array(), 0, size).array());
                 }
             } catch (IOException ex) {
                 Log.w(TAG, "Failed to read TUN", ex);
