@@ -25,4 +25,5 @@ Wsl-Android is distributed under the terms of the Apache License (Version 2.0).
 
 ## Acknowledge
 
-- igniter-go-libs (https://github.com/trojan-gfw/igniter-go-libs)
+- go-tun2socks-mobile (https://github.com/eycorsican/go-tun2socks-mobile)
+
