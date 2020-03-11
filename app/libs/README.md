@@ -1,4 +1,4 @@
-put golibs.aar v1.4 here.
+Put tun2socks.aar (v1.16.7) here.
 
 ref:
-- https://github.com/trojan-gfw/igniter-go-libs
+- https://github.com/eycorsican/go-tun2socks-mobile

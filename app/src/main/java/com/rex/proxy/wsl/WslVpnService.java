@@ -29,6 +29,14 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import tun2socks.PacketFlow;
 import tun2socks.Tun2socks;
 
 public class WslVpnService extends VpnService {
@@ -41,10 +49,13 @@ public class WslVpnService extends VpnService {
     public static final String ACTION_DISCONNECT = "com.rex.proxy.wsl.STOP";
 
     private PendingIntent mConfigureIntent;
+    private InputStreamReaderThread mTunReaderThread;
+    private FileDescriptor mTunFileDescriptor;
 
     @Override
     public void onCreate() {
         super.onCreate(); // Empty
+        Log.d(TAG, "onCreate");
         mConfigureIntent = PendingIntent.getActivity(this, 0,
                 new Intent(this, WslVpnClient.class),
                 PendingIntent.FLAG_UPDATE_CURRENT);
@@ -52,6 +63,7 @@ public class WslVpnService extends VpnService {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.d(TAG, "onStartCommand intent=" + ((intent != null) ? intent.getAction() : "null"));
         if (intent != null && ACTION_DISCONNECT.equals(intent.getAction())) {
             stop();
             return START_NOT_STICKY;
@@ -64,16 +76,19 @@ public class WslVpnService extends VpnService {
     @Override
     public void onDestroy() {
         super.onDestroy(); // Empty
+        Log.d(TAG, "onDestroy");
         stop();
     }
 
     @Override
     public void onRevoke() {
         super.onRevoke(); // Default stopSelf()
+        Log.d(TAG, "onRevoke");
         stop();
     }
 
     private void start() {
+        Log.i(TAG, "Start VPN");
         startForeground();
 
         // Extract information from the shared preferences.
@@ -126,17 +141,25 @@ public class WslVpnService extends VpnService {
         if (pfd == null) {
             stopForeground(true);
         }
-        Log.i(TAG, "New interface: " + pfd);
+        Log.i(TAG, "Start interface: " + pfd);
+        mTunFileDescriptor = pfd.getFileDescriptor();
 
-        Tun2socks.setLoglevel("debug");
-        Tun2socks.start(pfd.detachFd(), socks_address + ":" + socks_port, "255.0.128.1", "255.0.143.254", VPN_MTU);
-        //Tun2socks.start(pfd.detachFd(), socks_address + ":" + socks_port, "169.254.1.1", "169.254.1.254", VPN_MTU);
-        Log.i(TAG, "New interface: " + pfd);
+        // FIXME: How to stop the Tun2socks from writing the PacketFlow, let the OutputStreamPacketFlow can be release correctly after TUN interface closed
+        Tun2socks.startSocks(new OutputStreamPacketFlow(new FileOutputStream(mTunFileDescriptor)), socks_address, socks_port);
+        mTunReaderThread = new InputStreamReaderThread(new FileInputStream(mTunFileDescriptor));
+        mTunReaderThread.setName("TunReader");
+        mTunReaderThread.start();
+        Log.v(TAG, "Start-");
     }
 
     private void stop() {
-        Tun2socks.stop();
+        Log.i(TAG, "Stop");
+        if (mTunReaderThread != null) {
+            mTunReaderThread.shutdown();
+            mTunReaderThread = null;
+        }
         stopForeground(true);
+        Log.v(TAG, "Stop-");
     }
 
     private void startForeground() {
@@ -160,5 +183,63 @@ public class WslVpnService extends VpnService {
                 .build();
 
         startForeground(NOTIFY_ID, notify);
+    }
+
+    // Write socks received data back to fd for TUN interface
+    private class OutputStreamPacketFlow implements PacketFlow {
+        private OutputStream mOutput;
+        public OutputStreamPacketFlow(OutputStream out) {
+            mOutput = out;
+        }
+        @Override
+        public void writePacket(byte[] bytes) {
+            try {
+                Log.v(TAG, "Output size=" + bytes.length);
+                mOutput.write(bytes);
+            } catch (IOException ex) {
+                Log.w(TAG, "Failed to write TUN", ex);
+            }
+        }
+    }
+
+    // Read from TUN interface fd and send to socks
+    private class InputStreamReaderThread extends Thread {
+        private InputStream mInput;
+        public InputStreamReaderThread(InputStream input) {
+            mInput = input;
+        }
+        @Override
+        public void run() {
+            Log.i(TAG, "TunReader+");
+            try {
+                while (!isInterrupted()) {
+                    byte[] data = new byte[mInput.available()];
+                    int size = mInput.read(data);
+                    Log.v(TAG, "Input size=" + size);
+                    if (size != data.length) {
+                        Log.w(TAG, "Input size=" + size + " expected=" + data.length);
+                        break;
+                    }
+                    Tun2socks.inputPacket(data);
+                }
+            } catch (IOException ex) {
+                Log.w(TAG, "Failed to read TUN", ex);
+            }
+            Log.i(TAG, "TunReader-");
+        }
+        public void shutdown() {
+            Log.d(TAG, "TunReader shutdown");
+            try {
+                mInput.close();
+            } catch (IOException ex) {
+                Log.w(TAG, "Failed to close", ex);
+            }
+            try {
+                interrupt();
+                join();
+            } catch (InterruptedException ex) {
+                Log.w(TAG, "Failed to join", ex);
+            }
+        }
     }
 }
