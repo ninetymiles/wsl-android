@@ -29,12 +29,15 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import com.rex.proxy.WslLocal;
+
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Socket;
 import java.nio.ByteBuffer;
 
 import tun2socks.PacketFlow;
@@ -52,6 +55,8 @@ public class WslVpnService extends VpnService {
     private PendingIntent mConfigureIntent;
     private InputStreamReaderThread mTunReaderThread;
     private FileDescriptor mTunFileDescriptor;
+
+    private WslLocal mProxy;
 
     @Override
     public void onCreate() {
@@ -93,15 +98,25 @@ public class WslVpnService extends VpnService {
 
         // Extract information from the shared preferences.
         final SharedPreferences prefs = getSharedPreferences(WslPrefs.NAME, MODE_PRIVATE);
-        final String socks_address = prefs.getString(WslPrefs.SOCKS_ADDRESS, "");
-        final int socks_port = prefs.getInt(WslPrefs.SOCKS_PORT, 1080);
-        final String socks_user = prefs.getString(WslPrefs.SOCKS_USER, "");
-        final byte[] socks_password = prefs.getString(WslPrefs.SOCKS_PASSWORD, "").getBytes();
+        String socks_address = prefs.getString(WslPrefs.SOCKS_ADDRESS, "");
+        int socks_port = prefs.getInt(WslPrefs.SOCKS_PORT, 1080);
+        String socks_user = prefs.getString(WslPrefs.SOCKS_USER, "");
+        byte[] socks_password = prefs.getString(WslPrefs.SOCKS_PASSWORD, "").getBytes();
 
-        // FIXME: Protect the tunnel before connecting to avoid loopback.
-        //if (!protect(tunnel.socket())) {
-        //    throw new IllegalStateException("Cannot protect the tunnel");
-        //}
+        WslLocal.Configuration conf = new WslLocal.Configuration(0);
+        conf.callback = new WslLocal.SocketCallback() {
+            @Override
+            public void onConnect(Socket socket) {
+                if (!protect(socket)) {
+                    Log.w(TAG, "Cannot protect the socket:" + socket);
+                }
+            }
+        };
+        mProxy = new WslLocal()
+                .config(conf)
+                .start();
+        socks_address = "127.0.0.1";
+        socks_port = mProxy.port();
 
         // LinkLocal address 169.254.1.0 - 169.254.254.255
         // Tethering address 192.168.43.0/24
@@ -199,7 +214,7 @@ public class WslVpnService extends VpnService {
                 Log.v(TAG, "Output size=" + bytes.length);
                 mOutput.write(bytes);
             } catch (IOException ex) {
-                Log.w(TAG, "Failed to write TUN", ex);
+                Log.w(TAG, "Failed to write TUN " + ex.getMessage());
             }
         }
     }
@@ -226,7 +241,7 @@ public class WslVpnService extends VpnService {
                     Tun2socks.inputPacket(ByteBuffer.wrap(buffer.array(), 0, size).array());
                 }
             } catch (IOException ex) {
-                Log.w(TAG, "Failed to read TUN", ex);
+                Log.w(TAG, "Failed to read TUN " + ex.getMessage());
             }
             Log.i(TAG, "TunReader-");
         }

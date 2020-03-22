@@ -27,6 +27,13 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+
+    packagingOptions {
+        //exclude 'META-INF/NOTICE'
+        //exclude 'META-INF/LICENSE'
+        exclude 'META-INF/INDEX.LIST'
+        exclude 'META-INF/io.netty.versions.properties'
+    }
 }
 
 dependencies {
@@ -38,6 +45,11 @@ dependencies {
 
     implementation 'org.slf4j:slf4j-api:1.7.25'
     implementation 'com.github.tony19:logback-android:2.0.0'
+
+    implementation ('com.rex:wsl-socks:1.4-SNAPSHOT') {
+        exclude module: 'logback-core'
+        exclude module: 'logback-classic'
+    }
 
     testImplementation 'junit:junit:4.12'
 
